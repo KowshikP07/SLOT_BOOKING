@@ -28,6 +28,58 @@ public class SlotController {
     @Autowired
     private com.petbooking.repository.DepartmentRepository departmentRepository;
 
+    @Autowired
+    private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
+
+    @GetMapping("/{slotId}")
+    public ResponseEntity<?> getSlotById(@PathVariable Long slotId) {
+        String key = "slot:" + slotId;
+
+        // 1. Check Cache
+        Object cachedSlot = redisTemplate.opsForValue().get(key);
+        if (cachedSlot != null) {
+            System.out.println("Cache HIT for slotId: " + slotId);
+            return ResponseEntity.ok(cachedSlot);
+        }
+
+        // 2. Cache Miss - Fetch from DB
+        System.out.println("Cache MISS for slotId: " + slotId);
+        return slotRepository.findById(slotId).map(slot -> {
+            // 3. Store in Cache (e.g., for 10 minutes)
+            redisTemplate.opsForValue().set(key, slot, java.time.Duration.ofSeconds(10));
+            return ResponseEntity.ok(slot);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    private void clearSlotCache() {
+        java.util.Set<String> keys = redisTemplate.keys("slots:available:*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+            System.out.println("Cleared student slot cache keys: " + keys);
+        }
+        redisTemplate.delete("slots:admin:all");
+        System.out.println("Cleared admin all slots cache");
+    }
+
+    @GetMapping
+    public ResponseEntity<List<Slot>> getAllSlots() {
+        String key = "slots:admin:all";
+        // 1. Check Cache
+        Object cachedSlots = redisTemplate.opsForValue().get(key);
+        if (cachedSlots != null) {
+            System.out.println("Cache HIT for ALL slots (Admin)");
+            return ResponseEntity.ok((List<Slot>) cachedSlots);
+        }
+
+        System.out.println("Cache MISS for ALL slots (Admin)");
+        List<Slot> slots = slotRepository.findAll();
+
+        // 2. Store
+        redisTemplate.opsForValue().set(key, slots, java.time.Duration.ofSeconds(10));
+
+        return ResponseEntity.ok(slots);
+    }
+
     @PostMapping
     public ResponseEntity<?> createSlot(@RequestBody Dtos.CreateSlotRequest request) {
         // 1. Map DTO to Slot
@@ -58,7 +110,8 @@ public class SlotController {
                 deptQuotaRepository.save(dq);
             }
         }
-        
+
+        clearSlotCache(); // Evict Cache
         return ResponseEntity.ok(savedSlot);
     }
 
@@ -70,14 +123,13 @@ public class SlotController {
             slot.setEndTime(LocalTime.parse(request.getEndTime()));
             slot.setCategory(com.petbooking.entity.Student.StudentCategory.valueOf(request.getCategory()));
             slot.setPurpose(request.getPurpose());
-            // Note: Not updating quotas here to keep it simple, can be added if requested
-            return ResponseEntity.ok(slotRepository.save(slot));
-        }).orElse(ResponseEntity.notFound().build());
-    }
 
-    @GetMapping
-    public ResponseEntity<List<Slot>> getAllSlots() {
-        return ResponseEntity.ok(slotRepository.findAll());
+            Slot saved = slotRepository.save(slot);
+            clearSlotCache(); // Evict Cache
+            redisTemplate.delete("slot:" + slotId); // Clear single slot
+
+            return ResponseEntity.ok(saved);
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{slotId}")
@@ -87,6 +139,8 @@ public class SlotController {
         }
         try {
             slotRepository.deleteById(slotId);
+            clearSlotCache(); // Evict Cache
+            redisTemplate.delete("slot:" + slotId); // Clear single slot
             return ResponseEntity.ok("Slot deleted");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Cannot delete slot (likely has bookings/quotas)");
@@ -98,15 +152,20 @@ public class SlotController {
         return slotRepository.findById(slotId).map(slot -> {
             slot.setBookingOpen(!slot.isBookingOpen());
             slotRepository.save(slot);
+
+            clearSlotCache(); // Evict Cache
+            redisTemplate.delete("slot:" + slotId); // Clear single slot
+
             return ResponseEntity.ok(slot);
         }).orElse(ResponseEntity.notFound().build());
     }
-    
+
     @PostMapping("/{slotId}/quotas")
     public ResponseEntity<?> setQuota(@PathVariable Long slotId, @RequestBody DeptQuota quota) {
         // Validate slot exists, dept exists...
         // Simplified
-        Slot s = new Slot(); s.setSlotId(slotId);
+        Slot s = new Slot();
+        s.setSlotId(slotId);
         quota.setSlot(s);
         deptQuotaRepository.save(quota);
         return ResponseEntity.ok("Quota set");

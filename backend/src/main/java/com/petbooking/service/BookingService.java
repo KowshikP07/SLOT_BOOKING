@@ -18,16 +18,26 @@ public class BookingService {
     private SlotRepository slotRepository;
     @Autowired
     private DeptQuotaRepository deptQuotaRepository;
+    @Autowired
+    private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
+
+    private void clearBookingCache() {
+        java.util.Set<String> keys = redisTemplate.keys("bookings:*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+            System.out.println("Cleared bookings cache keys: " + keys);
+        }
+    }
 
     @Transactional
     public Booking bookSlot(String rollNo, Long slotId) {
         // 1. Validate Student
         Student student = studentRepository.findById(rollNo)
-            .orElseThrow(() -> new RuntimeException("Student not found"));
+                .orElseThrow(() -> new RuntimeException("Student not found"));
 
         // 2. Validate Slot
         Slot slot = slotRepository.findById(slotId)
-            .orElseThrow(() -> new RuntimeException("Slot not found"));
+                .orElseThrow(() -> new RuntimeException("Slot not found"));
 
         if (!slot.isBookingOpen()) {
             throw new RuntimeException("Booking is closed for this slot");
@@ -45,7 +55,7 @@ public class BookingService {
         // 4. Lock Quota Row & Check Availability
         // This query acquires a PESSIMISTIC_WRITE lock on the dept_quota row
         DeptQuota quota = deptQuotaRepository.findBySlotAndDeptWithLock(slotId, student.getDepartment().getDeptId())
-            .orElseThrow(() -> new RuntimeException("Quota not defined for this department/slot"));
+                .orElseThrow(() -> new RuntimeException("Quota not defined for this department/slot"));
 
         if (quota.getBookedCount() >= quota.getQuotaCapacity()) {
             throw new RuntimeException("Slot full for your department");
@@ -60,7 +70,12 @@ public class BookingService {
         booking.setStudent(student);
         booking.setSlot(slot);
         booking.setDepartment(student.getDepartment());
-        
-        return bookingRepository.save(booking);
+
+        Booking savedBooking = bookingRepository.save(booking);
+
+        // 7. Clear Cache (so Admin sees new booking immediately)
+        clearBookingCache();
+
+        return savedBooking;
     }
 }

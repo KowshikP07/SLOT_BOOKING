@@ -27,14 +27,32 @@ public class StudentController {
     @Autowired
     private BookingService bookingService;
 
+    @Autowired
+    private org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
+
     @GetMapping("/slots")
     public ResponseEntity<List<Slot>> getAvailableSlots(Authentication auth) {
         String rollNo = auth.getName();
         Student student = studentRepository.findById(rollNo).orElseThrow();
-        
-        // Filter by category
+
+        String key = "slots:available:" + student.getCategory();
+
+        // 1. Check Cache
+        List<Slot> cachedSlots = (List<Slot>) redisTemplate.opsForValue().get(key);
+        if (cachedSlots != null) {
+            System.out.println("Cache HIT for available slots (Category: " + student.getCategory() + ")");
+            return ResponseEntity.ok(cachedSlots);
+        }
+
+        // 2. Cache Miss - Fetch from DB
+        System.out.println("Cache MISS for available slots (Category: " + student.getCategory() + ")");
         List<Slot> slots = slotRepository.findByCategoryAndBookingOpenTrue(student.getCategory());
-        // ideally add quota info to response
+
+        // 3. Store in Cache (e.g., for 5 minutes)
+        if (slots != null && !slots.isEmpty()) {
+            redisTemplate.opsForValue().set(key, slots, java.time.Duration.ofSeconds(10));
+        }
+
         return ResponseEntity.ok(slots);
     }
 

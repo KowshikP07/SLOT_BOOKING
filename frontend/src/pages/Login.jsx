@@ -49,7 +49,7 @@ export default function Login() {
             const res = await axios.post("/api/auth/admin/login", { email, password });
             login(res.data.token, "ADMIN");
             navigate("/admin");
-        } catch (err) {
+        } catch {
             alert("Invalid Credentials");
         } finally {
             setLoading(false);

@@ -45,3 +45,12 @@ start.log
 # Database dumps
 *.dump
 *.sql.gz
+dump.rdb
+
+# JVM crash logs
+hs_err_pid*.log
+replay_pid*.log
+
+# Backend scripts/logs
+backend/start_backend.ps1
+backend/start_log.txt
