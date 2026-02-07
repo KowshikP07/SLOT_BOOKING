@@ -113,12 +113,16 @@ CREATE INDEX IF NOT EXISTS idx_bookings_slot ON bookings(exam_slot_id);
 -- Exams Table
 CREATE TABLE IF NOT EXISTS exams (
     exam_id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    total_days INT,
-    per_dept_capacity INT,
-    created_at TIMESTAMP DEFAULT NOW()
+    exam_name VARCHAR(100) NOT NULL,
+    no_of_days INT NOT NULL,
+    starting_date DATE NOT NULL,
+    ending_date DATE NOT NULL,
+    exam_purpose VARCHAR(255),
+    total_day_scholars INT DEFAULT 0,
+    total_hostel_boys INT DEFAULT 0,
+    total_hostel_girls INT DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT valid_exam_dates CHECK (starting_date <= ending_date)
 );
 
 -- Exam Slot Seats (Individual seat records)
@@ -139,7 +143,8 @@ CREATE TABLE IF NOT EXISTS exam_quotas (
     dept_id BIGINT NOT NULL REFERENCES departments(dept_id),
     category_type INT NOT NULL, -- 1=Day Scholar, 2=Hostel Boys, 3=Hostel Girls
     max_count INT NOT NULL,
-    current_fill INT NOT NULL DEFAULT 0
+    current_fill INT NOT NULL DEFAULT 0,
+    is_closed BOOLEAN NOT NULL DEFAULT false
 );
 
 -- Indexes for new tables

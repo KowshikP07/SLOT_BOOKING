@@ -18,12 +18,12 @@ public class ExamQuota {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "exam_id", nullable = false)
     @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
     private Exam exam;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "dept_id", nullable = false)
     @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
     private Department department;
@@ -36,4 +36,11 @@ public class ExamQuota {
 
     @Column(name = "current_fill", nullable = false)
     private Integer currentFill = 0;
+
+    @Column(name = "is_closed")
+    private Boolean isClosed = false;
+
+    public Boolean getIsClosed() {
+        return isClosed != null ? isClosed : false;
+    }
 }
